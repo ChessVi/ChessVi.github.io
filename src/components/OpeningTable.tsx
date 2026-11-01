@@ -14,6 +14,20 @@ type TimeFormatFilter = 'all' | 'blitz' | 'rapid';
 type OpponentFilter = 'all' | 'higher' | 'similar' | 'lower';
 type ColorFilter = 'all' | 'white' | 'black';
 
+// Safely get timestamp from game.date whether it is a Date instance, string, or number
+const getGameTime = (g: ParsedGame): number => {
+  if (!g) return 0;
+  if (g.date instanceof Date) {
+    const t = g.date.getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  if (typeof g.date === 'string' || typeof g.date === 'number') {
+    const parsed = new Date(g.date).getTime();
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
+
 export const OpeningTable: React.FC<OpeningTableProps> = ({
   allGames,
   minGames,
@@ -31,7 +45,21 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
   const [sortDir, setSortDir] = useState<SortDirection>('asc'); // Default asc so worst opening is at the top!
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
-  // Check if any filter is active
+  // Check formats present in allGames
+  const hasBlitz = useMemo(() => allGames.some((g) => g.timeClass === 'blitz'), [allGames]);
+  const hasRapid = useMemo(() => allGames.some((g) => g.timeClass === 'rapid'), [allGames]);
+
+  // Find latest game time in the dataset to calculate relative "3 months / 30 days"
+  const latestGameTime = useMemo(() => {
+    if (allGames.length === 0) return Date.now();
+    let max = 0;
+    for (const g of allGames) {
+      const t = getGameTime(g);
+      if (t > max) max = t;
+    }
+    return max > 0 ? max : Date.now();
+  }, [allGames]);
+
   const hasActiveFilters =
     dateFilter !== 'all' ||
     timeFormatFilter !== 'all' ||
@@ -46,28 +74,29 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
     setColorFilter('all');
     setOpponentFilter('all');
     setSearch('');
-    onMinGamesChange(3);
+    onMinGamesChange(1);
   };
 
   // Step 1: Filter raw games by Date, Time Format, Color, and Opponent Rating
   const filteredGames = useMemo(() => {
-    const now = new Date().getTime();
-
     return allGames.filter((g) => {
-      // 1. Date Range
+      // 1. Date Range (Calculated relative to latest game in archive so older archives still filter accurately)
       if (dateFilter !== 'all') {
-        const gameTime = g.date.getTime();
-        const daysAgo = (now - gameTime) / (1000 * 60 * 60 * 24);
-
-        if (dateFilter === '30d' && daysAgo > 30) return false;
-        if (dateFilter === '3m' && daysAgo > 90) return false;
-        if (dateFilter === '6m' && daysAgo > 180) return false;
-        if (dateFilter === '1y' && daysAgo > 365) return false;
+        const gameTime = getGameTime(g);
+        if (gameTime > 0) {
+          const daysDiff = (latestGameTime - gameTime) / (1000 * 60 * 60 * 24);
+          if (dateFilter === '30d' && daysDiff > 30) return false;
+          if (dateFilter === '3m' && daysDiff > 90) return false;
+          if (dateFilter === '6m' && daysDiff > 180) return false;
+          if (dateFilter === '1y' && daysDiff > 365) return false;
+        }
       }
 
       // 2. Time Format (Blitz vs Rapid)
       if (timeFormatFilter !== 'all') {
-        if (g.timeClass !== timeFormatFilter) return false;
+        if (!g.timeClass || g.timeClass.toLowerCase() !== timeFormatFilter.toLowerCase()) {
+          return false;
+        }
       }
 
       // 3. Color
@@ -88,12 +117,18 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
 
       return true;
     });
-  }, [allGames, dateFilter, timeFormatFilter, colorFilter, opponentFilter]);
+  }, [allGames, dateFilter, timeFormatFilter, colorFilter, opponentFilter, latestGameTime]);
 
   // Step 2: Dynamically calculate Opening Stats based on the filtered games slice
   const calculatedStats = useMemo(() => {
     return calculateOpeningStats(filteredGames, minGames);
   }, [filteredGames, minGames]);
+
+  // Compute stats with minGames = 1 so we can suggest lowering filter if calculatedStats is empty
+  const allStatsMin1 = useMemo(() => {
+    if (calculatedStats.length > 0 || minGames <= 1) return [];
+    return calculateOpeningStats(filteredGames, 1);
+  }, [filteredGames, minGames, calculatedStats.length]);
 
   // Step 3: Search and Sort the resulting opening stats
   const displayedStats = useMemo(() => {
@@ -189,6 +224,12 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
     return secs ? `${Math.round(secs / 60)} min` : tc;
   };
 
+  const formatDateString = (d: any) => {
+    if (!d) return '';
+    const dateObj = d instanceof Date ? d : new Date(d);
+    return !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString() : '';
+  };
+
   return (
     <div className="space-y-6">
       {/* Dynamic Charts reflecting current filters */}
@@ -242,13 +283,13 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                   }`}
                   title={
                     item.id === '3m'
-                      ? 'Last 3 Months'
+                      ? 'Last 3 Months of activity'
                       : item.id === '6m'
-                      ? 'Last 6 Months'
+                      ? 'Last 6 Months of activity'
                       : item.id === '30d'
-                      ? 'Last 30 Days'
+                      ? 'Last 30 Days of activity'
                       : item.id === '1y'
-                      ? 'Last 1 Year'
+                      ? 'Last 1 Year of activity'
                       : 'All Time'
                   }
                 >
@@ -266,20 +307,24 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
             <div className="grid grid-cols-3 gap-1 bg-[#121214] p-1 rounded-xl border border-neutral-800 text-xs">
               {(
                 [
-                  { id: 'all', label: 'All' },
-                  { id: 'blitz', label: 'Blitz' },
-                  { id: 'rapid', label: 'Rapid' },
+                  { id: 'all', label: 'All', disabled: false },
+                  { id: 'blitz', label: 'Blitz', disabled: !hasBlitz },
+                  { id: 'rapid', label: 'Rapid', disabled: !hasRapid },
                 ] as const
               ).map((item) => (
                 <button
                   key={item.id}
                   type="button"
+                  disabled={item.disabled}
                   onClick={() => setTimeFormatFilter(item.id)}
                   className={`py-1.5 rounded-lg font-medium transition text-center ${
-                    timeFormatFilter === item.id
+                    item.disabled
+                      ? 'opacity-30 cursor-not-allowed text-neutral-600'
+                      : timeFormatFilter === item.id
                       ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
                       : 'text-neutral-400 hover:text-neutral-200'
                   }`}
+                  title={item.disabled ? `No ${item.label} games in this profile fetch` : undefined}
                 >
                   {item.label}
                 </button>
@@ -396,7 +441,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                       : 'bg-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-700'
                   }`}
                 >
-                  {count === 1 ? 'Any' : `${count}+`}
+                  {count === 1 ? 'Any (1+)' : `${count}+`}
                 </button>
               ))}
             </div>
@@ -472,15 +517,41 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
             <tbody className="divide-y divide-neutral-800/60 font-mono">
               {displayedStats.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-neutral-500 italic font-sans">
-                    No openings found matching your criteria. Try adjusting the date range or lowering the minimum games filter.
+                  <td colSpan={7} className="py-12 text-center text-neutral-400 font-sans space-y-3">
+                    <p className="text-sm text-neutral-300 font-semibold">
+                      {filteredGames.length === 0
+                        ? 'No games match the selected filters.'
+                        : `No openings reached the ${minGames}+ game threshold in this filter.`}
+                    </p>
+                    {filteredGames.length > 0 && allStatsMin1.length > 0 && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => onMinGamesChange(1)}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-bold text-xs rounded-xl transition shadow-md"
+                        >
+                          Show {allStatsMin1.length} Openings with 1+ Games
+                        </button>
+                      </div>
+                    )}
+                    {filteredGames.length === 0 && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleResetFilters}
+                          className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs rounded-xl transition"
+                        >
+                          Reset Filters
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ) : (
                 displayedStats.map((op) => {
                   const rowKey = `${op.eco}-${op.name}`;
                   const isSelected = selectedKey === rowKey;
-                  const isSevereWeakness = op.winRate < 38 && op.totalGames >= 3;
+                  const isSevereWeakness = op.winRate < 38 && op.totalGames >= 2;
                   const gamesList = op.games ? [...op.games].slice(-16).reverse() : [];
 
                   return (
@@ -567,6 +638,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                         {/* Expand Action */}
                         <td className="py-3.5 px-4 text-right">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedKey(isSelected ? null : rowKey);
@@ -640,7 +712,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                                             </span>
                                           </div>
                                           <p className="text-[10px] text-neutral-500 mt-1">
-                                            {formatTimeControl(game.timeControlDetail, game.timeClass)} • Played as {game.playerColor} • {game.date.toLocaleDateString()}
+                                            {formatTimeControl(game.timeControlDetail, game.timeClass)} • Played as {game.playerColor} • {formatDateString(game.date)}
                                           </p>
                                         </div>
 
