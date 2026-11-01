@@ -1,6 +1,6 @@
-# ♟️ Chess Weakness Analyzer
+# ♟️ Chess Weakness Analyzer (ChessVi)
 
-> Discover your chess opening blind spots, analyze pawn structures, and export AI-ready coaching reports directly from your Chess.com games. Live at [chessweakness.github.io](https://chessweakness.github.io).
+> Discover your chess opening blind spots, analyze pawn structures, and export AI-ready coaching reports directly from your Chess.com games. Live at [chessvi.github.io](https://chessvi.github.io).
 
 ---
 
@@ -30,19 +30,15 @@ http://localhost:5173
 
 ---
 
-## 🌐 Deploy to `chessweakness.github.io`
+## 🌐 Deploy to `chessvi.github.io`
 
-1. Create a repository named `chessweakness.github.io` under your GitHub Organization `chessweakness`.
-2. Push your project:
+1. Push your project to the repository `ChessVi.github.io` under organization `ChessVi`:
    ```bash
-   git init
-   git remote add origin https://github.com/chessweakness/chessweakness.github.io.git
-   git add .
-   git commit -m "feat: Initial Chess Weakness Analyzer release"
+   git remote add origin https://github.com/ChessVi/ChessVi.github.io.git
    git branch -M main
    git push -u origin main
    ```
-3. In GitHub repo settings:
+2. In GitHub repo settings:
    - Go to **Settings** → **Pages**
    - Under **Build and deployment** → **Source**, select **GitHub Actions**
-4. The workflow in `.github/workflows/deploy.yml` will automatically build and publish the site!
+3. The workflow in `.github/workflows/deploy.yml` will automatically build and publish the site!

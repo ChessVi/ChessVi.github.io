@@ -41,7 +41,7 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
           </div>
 
           <a
-            href="https://github.com/chessweakness/chessweakness.github.io"
+            href="https://github.com/ChessVi/ChessVi.github.io"
             target="_blank"
             rel="noreferrer"
             className="text-xs text-neutral-400 hover:text-neutral-200 transition flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-900/60 hover:border-neutral-700"
