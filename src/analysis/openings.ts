@@ -159,6 +159,7 @@ export function calculateOpeningStats(
       asWhite,
       asBlack,
       recentTrend,
+      games: sorted,
     });
   }
 

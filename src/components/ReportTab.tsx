@@ -1,19 +1,47 @@
 import React, { useState } from 'react';
-import type { AnalysisResult } from '../types';
-import {
-  generateMarkdownReport,
-  generateJSONReport,
-} from '../analysis/report';
+import type { AnalysisResult, ParsedGame, TimeControl } from '../types';
+import { generateMarkdownReport, generateJSONReport } from '../analysis/report';
 
 interface ReportTabProps {
   result: AnalysisResult;
+  allGames?: ParsedGame[];
+  profile?: any;
+  playerStats?: any;
+  timeControl?: TimeControl;
 }
 
-export const ReportTab: React.FC<ReportTabProps> = ({ result }) => {
+export const ReportTab: React.FC<ReportTabProps> = ({
+  result,
+  allGames,
+  profile,
+  playerStats,
+  timeControl = 'both',
+}) => {
   const [copiedType, setCopiedType] = useState<'md' | 'prompt' | 'json' | null>(null);
 
   const markdownReport = generateMarkdownReport(result);
   const jsonReport = generateJSONReport(result);
+
+  // Full backup format for later re-importing without pulling data again
+  const fullBackupJSON = JSON.stringify(
+    {
+      version: '1.0',
+      app: 'ChessVi',
+      exportedAt: new Date().toISOString(),
+      username: result.username,
+      timeControl,
+      gamesCount: allGames?.length || result.totalGames,
+      profile: profile || null,
+      playerStats: playerStats || null,
+      games: allGames || [],
+      analysisSummary: {
+        overallWinRate: result.overallWinRate,
+        avgRating: result.avgRating,
+      },
+    },
+    null,
+    2
+  );
 
   const aiPrompt = `Here is my detailed Chess Weakness Report generated from my Chess.com games.
 Please act as my Grandmaster Chess Coach.
@@ -46,17 +74,17 @@ ${markdownReport}`;
   return (
     <div className="space-y-8">
       {/* Action Header Card */}
-      <div className="bg-[#18181b] border border-neutral-800 rounded-2xl p-6">
+      <div className="bg-[#18181b] border border-neutral-800 rounded-2xl p-6 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div>
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 mb-2">
-              <span>🤖</span> AI-Optimized Export
+              <span>🤖</span> AI-Optimized Export & Backup
             </div>
             <h3 className="text-lg font-bold text-white">
-              Export & Share With Your Favorite AI
+              Export & Backup Your Chess Analysis
             </h3>
             <p className="text-xs text-neutral-400 mt-1 max-w-xl leading-relaxed">
-              Feed your comprehensive opening analysis into ChatGPT, Claude, Gemini, or DeepSeek to get a custom coaching plan, tactical drills, and book recommendations.
+              Export a markdown report for your AI coach, or download a full <strong>.json dataset backup</strong> so you can re-import it anytime without re-fetching all your games from Chess.com!
             </p>
           </div>
 
@@ -80,21 +108,22 @@ ${markdownReport}`;
               }
               className="bg-[#121214] hover:bg-neutral-800 text-neutral-200 border border-neutral-700/80 px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2"
             >
-              <span>📥 Download .md</span>
+              <span>📄 Report (.md)</span>
             </button>
 
-            {/* Download JSON */}
+            {/* Download Full Backup JSON */}
             <button
               onClick={() =>
                 handleDownload(
-                  jsonReport,
-                  `chess_weakness_${result.username}.json`,
+                  fullBackupJSON,
+                  `chessvi_${result.username}_full_backup.json`,
                   'application/json'
                 )
               }
-              className="bg-[#121214] hover:bg-neutral-800 text-neutral-200 border border-neutral-700/80 px-4 py-2.5 rounded-xl text-xs font-semibold transition flex items-center gap-2"
+              className="bg-neutral-800 hover:bg-neutral-700 text-amber-400 border border-amber-500/30 px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-sm"
+              title="Exports all parsed games, ratings, and stats for instant re-import"
             >
-              <span>📦 Download .json</span>
+              <span>💾 Full Backup (.json)</span>
             </button>
           </div>
         </div>
@@ -156,3 +185,5 @@ ${markdownReport}`;
     </div>
   );
 };
+
+export default ReportTab;

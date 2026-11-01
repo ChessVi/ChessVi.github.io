@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { TimeControl } from '../types';
-import { useChesscom } from '../hooks/useChesscom';
+import { useChesscom, ChessViBackup } from '../hooks/useChesscom';
 import { useAnalysis } from '../hooks/useAnalysis';
 import { LoadingScreen } from './ui/LoadingScreen';
 import { OverviewTab } from './OverviewTab';
@@ -11,23 +11,65 @@ import { ReportTab } from './ReportTab';
 interface DashboardProps {
   username: string;
   timeControl: TimeControl;
+  importedData?: ChessViBackup;
   onBack: () => void;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
   username,
   timeControl: initialTimeControl,
+  importedData,
   onBack,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'openings' | 'structures' | 'report'>('overview');
   const [timeControl, setTimeControl] = useState<TimeControl>(initialTimeControl);
   const [minGames, setMinGames] = useState<number>(3);
 
-  const { games, loading, error, progress, profile, playerStats, fetchData } = useChesscom();
+  const {
+    games,
+    loading,
+    error,
+    progress,
+    profile,
+    playerStats,
+    isFromCache,
+    lastUpdated,
+    fetchData,
+    importDataset,
+  } = useChesscom();
 
   useEffect(() => {
-    fetchData(username, timeControl);
-  }, [username, timeControl, fetchData]);
+    if (importedData) {
+      importDataset(importedData);
+    } else {
+      fetchData(username, timeControl);
+    }
+  }, [username, timeControl, importedData, fetchData, importDataset]);
+
+  const handleRefresh = () => {
+    fetchData(username, timeControl, true);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+        if (parsed.username && Array.isArray(parsed.games)) {
+          importDataset(parsed);
+        } else {
+          alert('Invalid ChessVi dataset file');
+        }
+      } catch (err) {
+        alert('Could not parse the selected JSON file');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const analysisResult = useAnalysis(games, minGames, username);
 
@@ -42,7 +84,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#18181b] border border-neutral-800 rounded-2xl p-8 text-center">
+        <div className="max-w-md w-full bg-[#18181b] border border-neutral-800 rounded-2xl p-8 text-center shadow-xl">
           <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center text-2xl mx-auto mb-4">
             ⚠️
           </div>
@@ -58,7 +100,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               ← Choose another username
             </button>
             <button
-              onClick={() => fetchData(username, timeControl)}
+              onClick={() => fetchData(username, timeControl, true)}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-neutral-950 text-xs font-bold transition"
             >
               Retry
@@ -72,7 +114,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   if (!analysisResult) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-[#18181b] border border-neutral-800 rounded-2xl p-8 text-center">
+        <div className="max-w-md w-full bg-[#18181b] border border-neutral-800 rounded-2xl p-8 text-center shadow-xl">
           <div className="text-3xl mb-3">♟️</div>
           <h2 className="text-lg font-bold text-white mb-2">No Games Found</h2>
           <p className="text-xs text-neutral-400 mb-6">
@@ -122,7 +164,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 />
               ) : (
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold text-sm">
-                  {username[0].toUpperCase()}
+                  {username[0]?.toUpperCase() || 'P'}
                 </div>
               )}
 
@@ -143,8 +185,38 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          {/* Time Control Switcher */}
-          <div className="flex items-center gap-2">
+          {/* Right Header Actions: Cache Badge, Refresh, Import, Time Control Switcher */}
+          <div className="flex items-center gap-2.5">
+            {/* Cache / Refresh indicator */}
+            {isFromCache && (
+              <div className="hidden md:flex items-center gap-1.5 bg-neutral-900 px-2.5 py-1 rounded-lg border border-neutral-800 text-[11px] text-neutral-400">
+                <span className="text-amber-400">⚡ Cached</span>
+                <button
+                  onClick={handleRefresh}
+                  className="hover:text-white underline decoration-neutral-700 hover:decoration-amber-400 transition"
+                  title="Check Chess.com for newer games"
+                >
+                  Sync
+                </button>
+              </div>
+            )}
+
+            {/* Import JSON file directly */}
+            <label
+              className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-neutral-800 bg-[#18181b] hover:bg-neutral-800 text-neutral-300 hover:text-white transition text-xs cursor-pointer font-medium"
+              title="Import a saved .json backup"
+            >
+              <span>📂</span>
+              <span className="text-[11px]">Import</span>
+              <input
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </label>
+
+            {/* Time Control Switcher */}
             <div className="inline-flex rounded-xl p-1 bg-[#18181b] border border-neutral-800 text-xs">
               {(['blitz', 'rapid', 'both'] as TimeControl[]).map((tc) => (
                 <button
@@ -232,7 +304,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {activeTab === 'report' && (
-          <ReportTab result={analysisResult} />
+          <ReportTab
+            result={analysisResult}
+            allGames={games}
+            profile={profile}
+            playerStats={playerStats}
+            timeControl={timeControl}
+          />
         )}
       </main>
 
@@ -240,7 +318,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       <footer className="border-t border-neutral-800/80 py-6 text-center text-xs text-neutral-500 bg-[#0c0c0e] mt-12">
         <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p className="text-[11px] text-neutral-500">
-            100% Client-Side In-Browser Analysis • Zero Data Stored
+            100% Client-Side In-Browser Analysis • Zero Data Stored on Servers
           </p>
           <a
             href="https://www.facebook.com/0Shohan0"

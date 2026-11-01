@@ -52,6 +52,7 @@ export interface OpeningStats {
   asWhite: number;
   asBlack: number;
   recentTrend: number[];
+  games?: ParsedGame[];
 }
 
 export interface PawnStructure {

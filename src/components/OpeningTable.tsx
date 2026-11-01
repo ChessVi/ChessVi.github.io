@@ -29,7 +29,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
   // Sorting States
   const [sortField, setSortField] = useState<SortField>('winRate');
   const [sortDir, setSortDir] = useState<SortDirection>('asc'); // Default asc so worst opening is at the top!
-  const [selectedOpening, setSelectedOpening] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   // Check if any filter is active
   const hasActiveFilters =
@@ -149,15 +149,6 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
       setSortDir(field === 'winRate' ? 'asc' : 'desc');
     }
   };
-
-  // Selected opening game history for the inspector
-  const selectedOpeningGames = useMemo(() => {
-    if (!selectedOpening) return [];
-    return filteredGames
-      .filter((g) => g.opening?.name === selectedOpening)
-      .slice(-12)
-      .reverse();
-  }, [filteredGames, selectedOpening]);
 
   const getWinRateBadge = (winRate: number) => {
     if (winRate >= 55) {
@@ -487,17 +478,19 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                 </tr>
               ) : (
                 displayedStats.map((op) => {
-                  const isSelected = selectedOpening === op.name;
+                  const rowKey = `${op.eco}-${op.name}`;
+                  const isSelected = selectedKey === rowKey;
                   const isSevereWeakness = op.winRate < 38 && op.totalGames >= 3;
+                  const gamesList = op.games ? [...op.games].slice(-16).reverse() : [];
 
                   return (
-                    <React.Fragment key={op.name}>
+                    <React.Fragment key={rowKey}>
                       <tr
                         className={`hover:bg-neutral-800/40 transition cursor-pointer ${
                           isSelected ? 'bg-neutral-800/60' : ''
                         } ${isSevereWeakness ? 'bg-rose-500/[0.04]' : ''}`}
                         onClick={() =>
-                          setSelectedOpening(isSelected ? null : op.name)
+                          setSelectedKey(isSelected ? null : rowKey)
                         }
                       >
                         {/* Opening Name */}
@@ -576,9 +569,13 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setSelectedOpening(isSelected ? null : op.name);
+                              setSelectedKey(isSelected ? null : rowKey);
                             }}
-                            className="text-xs text-neutral-400 hover:text-amber-400 font-sans transition"
+                            className={`px-2 py-1 rounded text-xs transition font-sans ${
+                              isSelected
+                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                                : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                            }`}
                           >
                             {isSelected ? 'Close ▲' : 'Inspect ▼'}
                           </button>
@@ -595,7 +592,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                                   <h4 className="font-bold text-sm text-white flex items-center gap-2">
                                     <span>Filtered Games in {op.name}</span>
                                     <span className="text-xs font-mono font-normal text-neutral-500">
-                                      ({selectedOpeningGames.length} shown)
+                                      ({gamesList.length} shown)
                                     </span>
                                   </h4>
                                 </div>
@@ -608,56 +605,62 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                               </div>
 
                               {/* Game List */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                {selectedOpeningGames.map((game, idx) => {
-                                  const isWin = game.playerResult === 'win';
-                                  const isLoss = game.playerResult === 'loss';
-                                  const resultColor = isWin
-                                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                                    : isLoss
-                                    ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
-                                    : 'text-neutral-400 bg-neutral-800 border-neutral-700';
+                              {gamesList.length === 0 ? (
+                                <p className="text-xs text-neutral-500 italic py-2">
+                                  No individual games recorded for this filter setting.
+                                </p>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                                  {gamesList.map((game, idx) => {
+                                    const isWin = game.playerResult === 'win';
+                                    const isLoss = game.playerResult === 'loss';
+                                    const resultColor = isWin
+                                      ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                                      : isLoss
+                                      ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+                                      : 'text-neutral-400 bg-neutral-800 border-neutral-700';
 
-                                  return (
-                                    <div
-                                      key={game.id || idx}
-                                      className="p-3 rounded-xl bg-[#18181b] border border-neutral-800/80 flex items-center justify-between text-xs"
-                                    >
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <span
-                                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${resultColor}`}
-                                          >
-                                            {game.playerResult}
-                                          </span>
-                                          <span className="font-medium text-neutral-200">
-                                            vs {game.playerColor === 'white' ? game.black.username : game.white.username}
-                                          </span>
-                                          <span className="text-neutral-500 font-mono text-[11px]">
-                                            ({game.opponentRating})
-                                          </span>
+                                    return (
+                                      <div
+                                        key={game.id || idx}
+                                        className="p-3 rounded-xl bg-[#18181b] border border-neutral-800/80 flex items-center justify-between text-xs"
+                                      >
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <span
+                                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase border ${resultColor}`}
+                                            >
+                                              {game.playerResult}
+                                            </span>
+                                            <span className="font-medium text-neutral-200">
+                                              vs {game.playerColor === 'white' ? game.black.username : game.white.username}
+                                            </span>
+                                            <span className="text-neutral-500 font-mono text-[11px]">
+                                              ({game.opponentRating})
+                                            </span>
+                                          </div>
+                                          <p className="text-[10px] text-neutral-500 mt-1">
+                                            {formatTimeControl(game.timeControlDetail, game.timeClass)} • Played as {game.playerColor} • {game.date.toLocaleDateString()}
+                                          </p>
                                         </div>
-                                        <p className="text-[10px] text-neutral-500 mt-1">
-                                          {formatTimeControl(game.timeControlDetail, game.timeClass)} • Played as {game.playerColor} • {game.date.toLocaleDateString()}
-                                        </p>
-                                      </div>
 
-                                      <div className="flex items-center gap-2">
-                                        <a
-                                          href={`https://www.chess.com/analysis?pgn=${encodeURIComponent(
-                                            game.pgn
-                                          )}`}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition text-[11px] font-medium"
-                                        >
-                                          Analyze ↗
-                                        </a>
+                                        <div className="flex items-center gap-2">
+                                          <a
+                                            href={`https://www.chess.com/analysis?pgn=${encodeURIComponent(
+                                              game.pgn
+                                            )}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition text-[11px] font-medium"
+                                          >
+                                            Analyze ↗
+                                          </a>
+                                        </div>
                                       </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           </td>
                         </tr>

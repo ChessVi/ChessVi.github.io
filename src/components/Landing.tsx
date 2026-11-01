@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import type { TimeControl } from '../types';
+import type { ChessViBackup } from '../hooks/useChesscom';
 
 interface LandingProps {
   onAnalyze: (username: string, timeControl: TimeControl) => void;
+  onImportBackup: (backup: ChessViBackup) => void;
 }
 
-export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
+export const Landing: React.FC<LandingProps> = ({ onAnalyze, onImportBackup }) => {
   const [username, setUsername] = useState('');
   const [timeControl, setTimeControl] = useState<TimeControl>('blitz');
   const [error, setError] = useState('');
@@ -24,6 +26,30 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
   const handleQuickSelect = (name: string) => {
     setUsername(name);
     setError('');
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const parsed = JSON.parse(text);
+
+        if (!parsed.username || !Array.isArray(parsed.games)) {
+          setError('Invalid backup file. Ensure it was exported from ChessVi.');
+          return;
+        }
+
+        setError('');
+        onImportBackup(parsed);
+      } catch (err) {
+        setError('Could not parse the selected JSON file.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -155,6 +181,32 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
                 />
               </svg>
             </button>
+
+            {/* Divider */}
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-neutral-800"></div>
+              <span className="flex-shrink mx-3 text-[11px] text-neutral-500 uppercase tracking-wider">
+                Or Load Saved Data
+              </span>
+              <div className="flex-grow border-t border-neutral-800"></div>
+            </div>
+
+            {/* Import JSON File Button */}
+            <div>
+              <label className="w-full bg-[#121214] hover:bg-neutral-800 text-neutral-300 hover:text-white border border-neutral-700/80 hover:border-amber-500/50 py-3 px-4 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-2">
+                <span>📂</span>
+                <span>Import Saved Dataset (.json)</span>
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                />
+              </label>
+              <p className="text-[11px] text-neutral-500 text-center mt-1.5">
+                Instant load from previously exported backup without fetching from Chess.com
+              </p>
+            </div>
           </form>
         </div>
 
