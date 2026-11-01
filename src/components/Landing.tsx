@@ -56,11 +56,6 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
 
       {/* Hero Section */}
       <main className="max-w-4xl mx-auto px-4 py-16 md:py-24 text-center">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-300 text-xs font-medium mb-6">
-          <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-          100% Client-Side Chess.com Archive Analysis
-        </div>
-
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight text-white mb-6">
           Find Your <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500">Chess Weakness</span>, Win More Games.
         </h1>
