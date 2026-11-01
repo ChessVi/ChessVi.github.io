@@ -62,7 +62,7 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze, onImportBackup }) =
               ♟
             </span>
             <span>
-              Chess<span className="text-amber-400">Weakness</span>
+              Chess<span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-amber-200 to-amber-500 font-extrabold">Vi</span>
             </span>
           </div>
 
@@ -254,7 +254,7 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze, onImportBackup }) =
       <footer className="border-t border-neutral-800/80 py-8 text-center text-xs text-neutral-500 bg-[#0c0c0e]">
         <div className="max-w-4xl mx-auto px-4 space-y-3">
           <p>
-            Chess Weakness Analyzer is an open-source project powered by the official Chess.com Public API.
+            ChessVi is an open-source project powered by the official Chess.com Public API.
           </p>
           <p>
             Runs 100% inside your browser. No authentication required. No games or credentials stored on any server.
