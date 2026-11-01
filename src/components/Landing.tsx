@@ -205,12 +205,27 @@ export const Landing: React.FC<LandingProps> = ({ onAnalyze }) => {
 
       {/* Footer */}
       <footer className="border-t border-neutral-800/80 py-8 text-center text-xs text-neutral-500 bg-[#0c0c0e]">
-        <p className="mb-2">
-          Chess Weakness Analyzer is an open-source project powered by the official Chess.com Public API.
-        </p>
-        <p>
-          Runs 100% inside your browser. No authentication required. No games or credentials stored on any server.
-        </p>
+        <div className="max-w-4xl mx-auto px-4 space-y-3">
+          <p>
+            Chess Weakness Analyzer is an open-source project powered by the official Chess.com Public API.
+          </p>
+          <p>
+            Runs 100% inside your browser. No authentication required. No games or credentials stored on any server.
+          </p>
+          <div className="pt-2">
+            <a
+              href="https://www.facebook.com/0Shohan0"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 hover:border-amber-500/50 text-neutral-300 hover:text-amber-400 transition group text-xs font-medium"
+            >
+              <span>Made with</span>
+              <span className="text-rose-500 group-hover:scale-125 transition-transform duration-200">❤️</span>
+              <span>by <strong className="text-white group-hover:text-amber-400">Shohan</strong></span>
+              <span className="text-neutral-500 group-hover:text-amber-400/80 text-[10px]">↗</span>
+            </a>
+          </div>
+        </div>
       </footer>
     </div>
   );
