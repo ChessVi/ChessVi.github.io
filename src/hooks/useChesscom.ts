@@ -68,6 +68,7 @@ export function useChesscom(): UseChesscomReturn {
             white: g.white,
             black: g.black,
             timeClass: g.time_class,
+            timeControlDetail: g.time_control,
             date: new Date(g.end_time * 1000),
             moves,
             playerColor: playerColor as 'white' | 'black',

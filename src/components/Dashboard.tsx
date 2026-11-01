@@ -5,7 +5,6 @@ import { useAnalysis } from '../hooks/useAnalysis';
 import { LoadingScreen } from './ui/LoadingScreen';
 import { OverviewTab } from './OverviewTab';
 import { OpeningTable } from './OpeningTable';
-import { OpeningChart } from './OpeningChart';
 import { StructureTab } from './StructureTab';
 import { ReportTab } from './ReportTab';
 
@@ -221,15 +220,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {activeTab === 'openings' && (
-          <div className="space-y-8">
-            <OpeningChart stats={analysisResult.openingStats} />
-            <OpeningTable
-              stats={analysisResult.openingStats}
-              allGames={games}
-              minGames={minGames}
-              onMinGamesChange={setMinGames}
-            />
-          </div>
+          <OpeningTable
+            allGames={games}
+            minGames={minGames}
+            onMinGamesChange={setMinGames}
+          />
         )}
 
         {activeTab === 'structures' && (

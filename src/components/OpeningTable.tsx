@@ -1,54 +1,110 @@
 import React, { useState, useMemo } from 'react';
-import type { OpeningStats, SortField, SortDirection, ParsedGame } from '../types';
+import type { SortField, SortDirection, ParsedGame } from '../types';
+import { calculateOpeningStats } from '../analysis/openings';
+import { OpeningChart } from './OpeningChart';
 
 interface OpeningTableProps {
-  stats: OpeningStats[];
   allGames: ParsedGame[];
   minGames: number;
   onMinGamesChange: (val: number) => void;
 }
 
+type DateRangeFilter = 'all' | '30d' | '3m' | '6m' | '1y';
+type TimeFormatFilter = 'all' | 'blitz' | 'rapid';
+type OpponentFilter = 'all' | 'higher' | 'similar' | 'lower';
+type ColorFilter = 'all' | 'white' | 'black';
+
 export const OpeningTable: React.FC<OpeningTableProps> = ({
-  stats,
   allGames,
   minGames,
   onMinGamesChange,
 }) => {
+  // Enhanced Filter States
+  const [dateFilter, setDateFilter] = useState<DateRangeFilter>('all');
+  const [timeFormatFilter, setTimeFormatFilter] = useState<TimeFormatFilter>('all');
+  const [colorFilter, setColorFilter] = useState<ColorFilter>('all');
+  const [opponentFilter, setOpponentFilter] = useState<OpponentFilter>('all');
   const [search, setSearch] = useState('');
-  const [colorFilter, setColorFilter] = useState<'all' | 'white' | 'black'>('all');
+
+  // Sorting States
   const [sortField, setSortField] = useState<SortField>('winRate');
-  const [sortDir, setSortDir] = useState<SortDirection>('asc'); // default asc so worst opening appears at top!
+  const [sortDir, setSortDir] = useState<SortDirection>('asc'); // Default asc so worst opening is at the top!
   const [selectedOpening, setSelectedOpening] = useState<string | null>(null);
 
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      // For winRate, default to asc (worst first). For games, default to desc (most games first).
-      setSortDir(field === 'winRate' ? 'asc' : 'desc');
-    }
+  // Check if any filter is active
+  const hasActiveFilters =
+    dateFilter !== 'all' ||
+    timeFormatFilter !== 'all' ||
+    colorFilter !== 'all' ||
+    opponentFilter !== 'all' ||
+    search.trim() !== '' ||
+    minGames > 1;
+
+  const handleResetFilters = () => {
+    setDateFilter('all');
+    setTimeFormatFilter('all');
+    setColorFilter('all');
+    setOpponentFilter('all');
+    setSearch('');
+    onMinGamesChange(3);
   };
 
-  const filteredStats = useMemo(() => {
-    return stats
+  // Step 1: Filter raw games by Date, Time Format, Color, and Opponent Rating
+  const filteredGames = useMemo(() => {
+    const now = new Date().getTime();
+
+    return allGames.filter((g) => {
+      // 1. Date Range
+      if (dateFilter !== 'all') {
+        const gameTime = g.date.getTime();
+        const daysAgo = (now - gameTime) / (1000 * 60 * 60 * 24);
+
+        if (dateFilter === '30d' && daysAgo > 30) return false;
+        if (dateFilter === '3m' && daysAgo > 90) return false;
+        if (dateFilter === '6m' && daysAgo > 180) return false;
+        if (dateFilter === '1y' && daysAgo > 365) return false;
+      }
+
+      // 2. Time Format (Blitz vs Rapid)
+      if (timeFormatFilter !== 'all') {
+        if (g.timeClass !== timeFormatFilter) return false;
+      }
+
+      // 3. Color
+      if (colorFilter !== 'all') {
+        if (g.playerColor !== colorFilter) return false;
+      }
+
+      // 4. Opponent Rating Tier
+      if (opponentFilter !== 'all') {
+        const playerRating =
+          g.playerColor === 'white' ? g.white.rating : g.black.rating;
+        const diff = g.opponentRating - playerRating;
+
+        if (opponentFilter === 'higher' && diff < 30) return false; // Opponent is at least 30+ higher
+        if (opponentFilter === 'lower' && diff > -30) return false; // Opponent is at least 30+ lower
+        if (opponentFilter === 'similar' && Math.abs(diff) > 50) return false; // Within ±50 Elo
+      }
+
+      return true;
+    });
+  }, [allGames, dateFilter, timeFormatFilter, colorFilter, opponentFilter]);
+
+  // Step 2: Dynamically calculate Opening Stats based on the filtered games slice
+  const calculatedStats = useMemo(() => {
+    return calculateOpeningStats(filteredGames, minGames);
+  }, [filteredGames, minGames]);
+
+  // Step 3: Search and Sort the resulting opening stats
+  const displayedStats = useMemo(() => {
+    return calculatedStats
       .filter((op) => {
-        // Min games filter
-        if (op.totalGames < minGames) return false;
-
-        // Search filter
-        if (search.trim()) {
-          const q = search.toLowerCase();
-          const matchName = op.name.toLowerCase().includes(q);
-          const matchEco = op.eco.toLowerCase().includes(q);
-          if (!matchName && !matchEco) return false;
-        }
-
-        // Color filter
-        if (colorFilter === 'white' && op.asWhite === 0) return false;
-        if (colorFilter === 'black' && op.asBlack === 0) return false;
-
-        return true;
+        if (!search.trim()) return true;
+        const q = search.toLowerCase();
+        return (
+          op.name.toLowerCase().includes(q) ||
+          op.eco.toLowerCase().includes(q)
+        );
       })
       .sort((a, b) => {
         let valA: number | string = 0;
@@ -83,16 +139,25 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
           ? (valA as number) - (valB as number)
           : (valB as number) - (valA as number);
       });
-  }, [stats, minGames, search, colorFilter, sortField, sortDir]);
+  }, [calculatedStats, search, sortField, sortDir]);
 
-  // Selected opening game history
-  const selectedGames = useMemo(() => {
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDir(field === 'winRate' ? 'asc' : 'desc');
+    }
+  };
+
+  // Selected opening game history for the inspector
+  const selectedOpeningGames = useMemo(() => {
     if (!selectedOpening) return [];
-    return allGames
+    return filteredGames
       .filter((g) => g.opening?.name === selectedOpening)
-      .slice(-10)
+      .slice(-12)
       .reverse();
-  }, [allGames, selectedOpening]);
+  }, [filteredGames, selectedOpening]);
 
   const getWinRateBadge = (winRate: number) => {
     if (winRate >= 55) {
@@ -116,11 +181,192 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
     );
   };
 
+  // Helper format time control string
+  const formatTimeControl = (tc?: string, timeClass?: string) => {
+    if (!tc) return timeClass || 'chess';
+    if (tc === '180') return '3 min';
+    if (tc === '180+2') return '3+2';
+    if (tc === '300') return '5 min';
+    if (tc === '300+5') return '5+5';
+    if (tc === '600') return '10 min';
+    if (tc === '900+10') return '15+10';
+    if (tc.includes('+')) {
+      const [base, inc] = tc.split('+');
+      return `${Math.round(parseInt(base, 10) / 60)}+${inc}`;
+    }
+    const secs = parseInt(tc, 10);
+    return secs ? `${Math.round(secs / 60)} min` : tc;
+  };
+
   return (
     <div className="space-y-6">
-      {/* Controls & Filters Bar */}
-      <div className="bg-[#18181b] border border-neutral-800 rounded-2xl p-5 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+      {/* Dynamic Charts reflecting current filters */}
+      <OpeningChart stats={calculatedStats} />
+
+      {/* Advanced Filter Control Center */}
+      <div className="bg-[#18181b] border border-neutral-800 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800/80 pb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🎛️</span>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-white">
+              Filter Repertoire & Game Conditions
+            </h3>
+          </div>
+
+          {hasActiveFilters && (
+            <button
+              onClick={handleResetFilters}
+              className="text-xs text-rose-400 hover:text-rose-300 transition flex items-center gap-1 self-start sm:self-auto font-medium"
+            >
+              <span>✕</span> Reset All Filters
+            </button>
+          )}
+        </div>
+
+        {/* Filter Rows */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Date Filter */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-2">
+              📅 Date Range
+            </label>
+            <div className="grid grid-cols-5 gap-1 bg-[#121214] p-1 rounded-xl border border-neutral-800 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: '30d', label: '30d' },
+                  { id: '3m', label: '3m' },
+                  { id: '6m', label: '6m' },
+                  { id: '1y', label: '1y' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setDateFilter(item.id)}
+                  className={`py-1.5 rounded-lg font-medium transition text-center ${
+                    dateFilter === item.id
+                      ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                  title={
+                    item.id === '3m'
+                      ? 'Last 3 Months'
+                      : item.id === '6m'
+                      ? 'Last 6 Months'
+                      : item.id === '30d'
+                      ? 'Last 30 Days'
+                      : item.id === '1y'
+                      ? 'Last 1 Year'
+                      : 'All Time'
+                  }
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. Time Format Filter */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-2">
+              ⏱️ Time Format
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-[#121214] p-1 rounded-xl border border-neutral-800 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'blitz', label: 'Blitz' },
+                  { id: 'rapid', label: 'Rapid' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTimeFormatFilter(item.id)}
+                  className={`py-1.5 rounded-lg font-medium transition text-center ${
+                    timeFormatFilter === item.id
+                      ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Color Filter */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-2">
+              ♟️ Playing Color
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-[#121214] p-1 rounded-xl border border-neutral-800 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'Both' },
+                  { id: 'white', label: 'White' },
+                  { id: 'black', label: 'Black' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setColorFilter(item.id)}
+                  className={`py-1.5 rounded-lg font-medium transition text-center ${
+                    colorFilter === item.id
+                      ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 4. Opponent Rating Filter */}
+          <div>
+            <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-2">
+              🎯 Opponent Level
+            </label>
+            <div className="grid grid-cols-4 gap-1 bg-[#121214] p-1 rounded-xl border border-neutral-800 text-xs">
+              {(
+                [
+                  { id: 'all', label: 'All' },
+                  { id: 'higher', label: 'Higher' },
+                  { id: 'similar', label: '±50' },
+                  { id: 'lower', label: 'Lower' },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setOpponentFilter(item.id)}
+                  className={`py-1.5 rounded-lg font-medium transition text-center ${
+                    opponentFilter === item.id
+                      ? 'bg-amber-500 text-neutral-950 font-bold shadow-sm'
+                      : 'text-neutral-400 hover:text-neutral-200'
+                  }`}
+                  title={
+                    item.id === 'higher'
+                      ? 'Opponents rated 30+ higher than you'
+                      : item.id === 'similar'
+                      ? 'Opponents within ±50 Elo'
+                      : item.id === 'lower'
+                      ? 'Opponents rated 30+ lower than you'
+                      : 'All opponent ratings'
+                  }
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Search & Min Games Row */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pt-1">
           {/* Search Input */}
           <div className="md:col-span-5 relative">
             <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500 text-xs">
@@ -128,73 +374,76 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
             </span>
             <input
               type="text"
-              placeholder="Filter by opening name or ECO (e.g. Sicilian, B20)..."
+              placeholder="Search opening name or ECO code (e.g. Sicilian, B20)..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full bg-[#121214] border border-neutral-700/80 focus:border-amber-500 rounded-xl pl-9 pr-4 py-2.5 text-xs text-white placeholder-neutral-500 focus:outline-none"
             />
           </div>
 
-          {/* Min Games Filter */}
-          <div className="md:col-span-4 flex items-center gap-3 bg-[#121214] px-4 py-2 rounded-xl border border-neutral-800">
-            <span className="text-xs font-semibold text-neutral-400 whitespace-nowrap">
-              Min Games: <span className="text-amber-400 font-mono">{minGames}</span>
-            </span>
-            <input
-              type="range"
-              min="1"
-              max="25"
-              step="1"
-              value={minGames}
-              onChange={(e) => onMinGamesChange(Number(e.target.value))}
-              className="w-full accent-amber-500 cursor-pointer h-1.5 bg-neutral-800 rounded-lg"
-            />
-            {/* Quick 10+ games button as requested */}
-            <button
-              onClick={() => onMinGamesChange(10)}
-              className={`text-[11px] px-2 py-0.5 rounded font-mono font-semibold transition ${
-                minGames === 10
-                  ? 'bg-amber-500 text-neutral-950'
-                  : 'bg-neutral-800 text-neutral-300 hover:text-white'
-              }`}
-              title="Show openings with 10 or more games"
-            >
-              10+
-            </button>
-          </div>
+          {/* Min Games Filter with Quick Chips */}
+          <div className="md:col-span-7 flex flex-wrap items-center justify-between gap-3 bg-[#121214] px-4 py-2 rounded-xl border border-neutral-800">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-neutral-400 whitespace-nowrap">
+                Min Games:
+              </span>
+              <span className="text-amber-400 font-mono font-bold text-xs bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
+                {minGames}+
+              </span>
+            </div>
 
-          {/* Color Filter */}
-          <div className="md:col-span-3 flex justify-end">
-            <div className="inline-flex rounded-xl p-1 bg-[#121214] border border-neutral-800 text-xs w-full justify-between">
-              {(['all', 'white', 'black'] as const).map((color) => (
+            {/* Quick Presets */}
+            <div className="flex items-center gap-1.5">
+              {[1, 3, 5, 10, 20].map((count) => (
                 <button
-                  key={color}
-                  onClick={() => setColorFilter(color)}
-                  className={`flex-1 py-1.5 px-2 rounded-lg capitalize font-medium transition text-center ${
-                    colorFilter === color
-                      ? 'bg-neutral-800 text-white shadow-sm'
-                      : 'text-neutral-500 hover:text-neutral-300'
+                  key={count}
+                  type="button"
+                  onClick={() => onMinGamesChange(count)}
+                  className={`text-[11px] px-2.5 py-1 rounded-lg font-mono font-semibold transition ${
+                    minGames === count
+                      ? 'bg-amber-500 text-neutral-950 shadow-sm'
+                      : 'bg-neutral-800 text-neutral-300 hover:text-white hover:bg-neutral-700'
                   }`}
                 >
-                  {color === 'all' ? 'All Colors' : color}
+                  {count === 1 ? 'Any' : `${count}+`}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Quick helper tag */}
-        <div className="flex items-center justify-between text-xs text-neutral-500 pt-1">
-          <span>
-            Showing <span className="text-neutral-200 font-semibold">{filteredStats.length}</span> openings matching filters
-          </span>
+        {/* Live Filter Summary Banner */}
+        <div className="flex flex-wrap items-center justify-between text-xs text-neutral-400 pt-2 border-t border-neutral-800/60 gap-2">
+          <div className="flex items-center gap-2">
+            <span>
+              Analyzing <strong className="text-amber-400 font-mono">{filteredGames.length}</strong> filtered games
+              across <strong className="text-neutral-200 font-mono">{displayedStats.length}</strong> qualifying openings.
+            </span>
+            {dateFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-mono">
+                {dateFilter === '30d'
+                  ? 'Last 30 Days'
+                  : dateFilter === '3m'
+                  ? 'Last 3 Months'
+                  : dateFilter === '6m'
+                  ? 'Last 6 Months'
+                  : 'Last 1 Year'}
+              </span>
+            )}
+            {timeFormatFilter !== 'all' && (
+              <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 text-[10px] font-mono capitalize">
+                {timeFormatFilter} Only
+              </span>
+            )}
+          </div>
+
           <span className="text-[11px] text-neutral-500 italic">
-            Tip: Click column headers to sort. By default sorted to highlight worst openings first.
+            Sorted by lowest win rate first (weakness detector)
           </span>
         </div>
       </div>
 
-      {/* Table Card */}
+      {/* Main Table */}
       <div className="bg-[#18181b] border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs text-neutral-300 border-collapse">
@@ -226,20 +475,20 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                 >
                   Avg Opp {sortField === 'avgRating' ? (sortDir === 'asc' ? '↑' : '↓') : ''}
                 </th>
-                <th className="py-3.5 px-4 text-right">Details</th>
+                <th className="py-3.5 px-4 text-right">Inspect</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/60 font-mono">
-              {filteredStats.length === 0 ? (
+              {displayedStats.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-neutral-500 italic font-sans">
-                    No openings found matching the current filters. Try lowering the minimum games or clearing the search.
+                    No openings found matching your criteria. Try adjusting the date range or lowering the minimum games filter.
                   </td>
                 </tr>
               ) : (
-                filteredStats.map((op) => {
+                displayedStats.map((op) => {
                   const isSelected = selectedOpening === op.name;
-                  const isSevereWeakness = op.winRate < 38 && op.totalGames >= 5;
+                  const isSevereWeakness = op.winRate < 38 && op.totalGames >= 3;
 
                   return (
                     <React.Fragment key={op.name}>
@@ -256,8 +505,8 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                           <div className="flex items-center gap-2">
                             {isSevereWeakness && (
                               <span
-                                className="w-1.5 h-1.5 rounded-full bg-rose-500"
-                                title="Statistically low win rate"
+                                className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0"
+                                title="Statistically low win rate in this filter"
                               />
                             )}
                             <span className="font-semibold text-white truncate max-w-xs sm:max-w-md">
@@ -344,14 +593,14 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800/80 pb-3">
                                 <div>
                                   <h4 className="font-bold text-sm text-white flex items-center gap-2">
-                                    <span>Recent Games in {op.name}</span>
+                                    <span>Filtered Games in {op.name}</span>
                                     <span className="text-xs font-mono font-normal text-neutral-500">
-                                      ({selectedGames.length} shown)
+                                      ({selectedOpeningGames.length} shown)
                                     </span>
                                   </h4>
                                 </div>
                                 <div className="text-xs text-neutral-400">
-                                  Performance Rating:{' '}
+                                  Performance Rating in this selection:{' '}
                                   <span className="font-mono font-bold text-amber-400">
                                     {op.performanceRating}
                                   </span>
@@ -360,7 +609,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
 
                               {/* Game List */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                                {selectedGames.map((game, idx) => {
+                                {selectedOpeningGames.map((game, idx) => {
                                   const isWin = game.playerResult === 'win';
                                   const isLoss = game.playerResult === 'loss';
                                   const resultColor = isWin
@@ -389,7 +638,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                                           </span>
                                         </div>
                                         <p className="text-[10px] text-neutral-500 mt-1">
-                                          Played as {game.playerColor} • {game.date.toLocaleDateString()}
+                                          {formatTimeControl(game.timeControlDetail, game.timeClass)} • Played as {game.playerColor} • {game.date.toLocaleDateString()}
                                         </p>
                                       </div>
 
@@ -402,7 +651,7 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
                                           rel="noreferrer"
                                           className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white transition text-[11px] font-medium"
                                         >
-                                          Analyze on Chess.com ↗
+                                          Analyze ↗
                                         </a>
                                       </div>
                                     </div>
@@ -424,3 +673,5 @@ export const OpeningTable: React.FC<OpeningTableProps> = ({
     </div>
   );
 };
+
+export default OpeningTable;

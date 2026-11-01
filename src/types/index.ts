@@ -24,6 +24,7 @@ export interface ParsedGame {
   white: { username: string; rating: number; result: string };
   black: { username: string; rating: number; result: string };
   timeClass: string;
+  timeControlDetail?: string;
   date: Date;
   moves: string[];
   playerColor: 'white' | 'black';
